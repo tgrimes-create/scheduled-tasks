@@ -1,38 +1,78 @@
-# To run and test the code you need to update 4 places:
-# 1. Change MY_EMAIL/MY_PASSWORD to your own details.
-# 2. Go to your email provider and make it allow less secure apps.
-# 3. Update the SMTP ADDRESS to match your email provider.
-# 4. Update birthdays.csv to contain today's month and day.
-# See the solution video in the 100 Days of Python Course for explainations.
-
-
-from datetime import datetime
-import pandas
-import random
+import requests
 import smtplib
 import os
+from dotenv import load_dotenv
 
-# import os and use it to get the Github repository secrets
+# Loads secret variables from .env file
+load_dotenv()
+
 MY_EMAIL = os.environ.get("MY_EMAIL")
 MY_PASSWORD = os.environ.get("MY_PASSWORD")
 
-today = datetime.now()
-today_tuple = (today.month, today.day)
 
-data = pandas.read_csv("birthdays.csv")
-birthdays_dict = {(data_row["month"], data_row["day"])                  : data_row for (index, data_row) in data.iterrows()}
-if today_tuple in birthdays_dict:
-    birthday_person = birthdays_dict[today_tuple]
-    file_path = f"letter_templates/letter_{random.randint(1, 3)}.txt"
-    with open(file_path) as letter_file:
-        contents = letter_file.read()
-        contents = contents.replace("[NAME]", birthday_person["name"])
+# API endpoints and credentials
+# Note: In production code, it is safer to store API keys in environment variables
+OWM_Endpoint = "https://api.openweathermap.org/data/2.5/forecast"
+geo_coder_endpoint = "http://api.openweathermap.org/geo/1.0/zip"
+api_key = os.environ.get("OWM_API_KEY")
+my_zip = os.environ.get("MY_ZIP")
 
-    with smtplib.SMTP("YOUR EMAIL PROVIDER SMTP SERVER ADDRESS") as connection:
+
+# ---------------------------------------------------------
+# 1. Geocoding Setup: Convert Zip Code to Coordinates
+# ---------------------------------------------------------
+geo_coder_parameters = {
+    "zip": [my_zip, "US"],
+    "appid": api_key,
+}
+
+# Fetch latitude and longitude
+response_2 = requests.get(url=geo_coder_endpoint, params=geo_coder_parameters)
+response_2.raise_for_status()
+geo_data = response_2.json()
+
+MY_LAT = geo_data["lat"]
+MY_LNG = geo_data["lon"]
+
+# ---------------------------------------------------------
+# 2. Weather Setup: Fetch Forecast Data
+# ---------------------------------------------------------
+# Set parameters for the weather API request (fetching next 4 intervals)
+weather_parameters = {
+    "lat": MY_LAT,
+    "lon": MY_LNG,
+    "appid": api_key,
+    "cnt": 4,
+}
+
+# Fetch the weather forecast data
+response = requests.get(url=OWM_Endpoint, params=weather_parameters)
+response.raise_for_status()
+weather_data = response.json()
+
+
+# ---------------------------------------------------------
+# 3. Forecast Evaluation
+# ---------------------------------------------------------
+def going_to_rain():
+    """Checks the upcoming forecast intervals for rain condition codes."""
+    will_rain = False
+    for hour_data in weather_data["list"]:
+        condition_code = hour_data["weather"][0]["id"]
+
+        # OpenWeatherMap condition codes under 600 indicate rain, drizzle, or thunderstorms
+        if int(condition_code) < 600:
+            will_rain = True
+
+    return will_rain
+
+
+# Output the forecast result
+if going_to_rain():
+    with smtplib.SMTP("smtp.gmail.com") as connection:
         connection.starttls()
-        connection.login(MY_EMAIL, MY_PASSWORD)
+        connection.login(user=MY_EMAIL, password=MY_PASSWORD)
         connection.sendmail(
-            from_addr=MY_EMAIL,
-            to_addrs=birthday_person["email"],
-            msg=f"Subject:Happy Birthday!\n\n{contents}"
-        )
+                from_addr=MY_EMAIL,
+                to_addrs="t.grimes41@gmail.com",
+                msg="Subject:Rain Alert\n\n It is going to rain")
