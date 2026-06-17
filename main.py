@@ -1,10 +1,7 @@
 import requests
 import smtplib
 import os
-from dotenv import load_dotenv
 
-# Loads secret variables from .env file
-load_dotenv()
 
 MY_EMAIL = os.environ.get("MY_EMAIL")
 MY_PASSWORD = os.environ.get("MY_PASSWORD")
